@@ -75,6 +75,7 @@ final class REST { private REST() {}
         @Override
         protected UserRecoverableAuthIOException doInBackground(Void... nadas) {
           try {
+            // GoogleAuthUtil.getToken(mAct, email, DriveScopes.DRIVE_FILE);   SO 30122755
             mGOOSvc.files().get("root").setFields("title").execute();
             mConnected = true;
           }
@@ -94,7 +95,7 @@ final class REST { private REST() {}
           super.onPostExecute(ex);
           if (mConnected) {
             mConnCBs.onConnOK();
-          } else {  // null indictes general error (fatal)
+          } else {  // null indicates general error (fatal)
             mConnCBs.onConnFail(ex == null ? null : ex.getIntent());
           }
         }
