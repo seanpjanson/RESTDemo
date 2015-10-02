@@ -14,13 +14,11 @@ package com.spjanson.restdemo;
 
 import android.app.Activity;
 import android.content.ContentValues;
-import android.content.Intent;
 import android.os.AsyncTask;
 
-import com.google.android.gms.auth.GoogleAuthUtil;
-import com.google.android.gms.common.AccountPicker;
 import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAuthIOException;
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.FileContent;
@@ -33,14 +31,13 @@ import com.google.api.services.drive.model.FileList;
 import com.google.api.services.drive.model.ParentReference;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 
 final class REST { private REST() {}
   interface ConnectCBs {
-    void onConnFail(Intent it);
+    void onConnFail(Exception ex);
     void onConnOK();
   }
   private static Drive mGOOSvc;
@@ -57,8 +54,8 @@ final class REST { private REST() {}
       if (email != null) {
         mConnCBs = (ConnectCBs)act;
         mGOOSvc = new Drive.Builder(AndroidHttp.newCompatibleTransport(), new GsonFactory(),
-        GoogleAccountCredential.usingOAuth2(UT.acx, Collections.singletonList(DriveScopes.DRIVE_FILE))
-        .setSelectedAccountName(email)
+          GoogleAccountCredential.usingOAuth2(UT.acx, Collections.singletonList(DriveScopes.DRIVE_FILE))
+            .setSelectedAccountName(email)
         ).build();
         return true;
       }
@@ -71,32 +68,35 @@ final class REST { private REST() {}
   static void connect() {
     if (UT.AM.getEmail() != null && mGOOSvc != null) {
       mConnected = false;
-      new AsyncTask<Void, Void, UserRecoverableAuthIOException>(){
+      new AsyncTask<Void, Void, Exception>() {
         @Override
-        protected UserRecoverableAuthIOException doInBackground(Void... nadas) {
+        protected Exception doInBackground(Void... nadas) {
           try {
             // GoogleAuthUtil.getToken(mAct, email, DriveScopes.DRIVE_FILE);   SO 30122755
             mGOOSvc.files().get("root").setFields("title").execute();
             mConnected = true;
-          }
-          catch (UserRecoverableAuthIOException uraIOEx) {
+          } catch (UserRecoverableAuthIOException uraIOEx) {  // standard authorization failure - user fixable
             return uraIOEx;
-          }
-          catch (IOException e) {   // '404 not found' in FILE scope, consider connected
+          } catch (GoogleAuthIOException gaIOEx) {  // usually PackageName /SHA1 mismatch in DevConsole
+            return gaIOEx;
+          } catch (IOException e) {   // '404 not found' in FILE scope, consider connected
             if (e instanceof GoogleJsonResponseException) {
-              if (404 == ((GoogleJsonResponseException)e).getStatusCode())
+              if (404 == ((GoogleJsonResponseException) e).getStatusCode())
                 mConnected = true;
             }
-          } catch (Exception e) { UT.le(e); }
+          } catch (Exception e) {  // "the name must not be empty" indicates
+            UT.le(e);           // UNREGISTERED / EMPTY account in 'setSelectedAccountName()' above
+          }
           return null;
         }
+
         @Override
-        protected void onPostExecute(UserRecoverableAuthIOException ex) {
+        protected void onPostExecute(Exception ex) {
           super.onPostExecute(ex);
           if (mConnected) {
             mConnCBs.onConnOK();
           } else {  // null indicates general error (fatal)
-            mConnCBs.onConnFail(ex == null ? null : ex.getIntent());
+            mConnCBs.onConnFail(ex);
           }
         }
       }.execute();
@@ -131,7 +131,7 @@ final class REST { private REST() {}
         if (gLst != null) {
           for (File gFl : gLst.getItems()) {
             if (gFl.getLabels().getTrashed()) continue;
-            gfs.add( UT.newCVs(gFl.getTitle(),gFl.getId()));
+            gfs.add( UT.newCVs(gFl.getTitle(), gFl.getId(), gFl.getMimeType()));
           }                                                                 //else UT.lg("failed " + gFl.getTitle());
           npTok = gLst.getNextPageToken();
           qry.setPageToken(npTok);
@@ -151,7 +151,7 @@ final class REST { private REST() {}
     String rsId = null;
     if (mGOOSvc != null && mConnected && titl != null) try {
       File meta = new File();
-      meta.setParents(Arrays.asList(new ParentReference().setId(prnId == null ? "root" : prnId)));
+      meta.setParents(Collections.singletonList(new ParentReference().setId(prnId == null ? "root" : prnId)));
       meta.setTitle(titl);
       meta.setMimeType(UT.MIME_FLDR);
 
@@ -177,7 +177,7 @@ final class REST { private REST() {}
     String rsId = null;
     if (mGOOSvc != null && mConnected && titl != null && mime != null && file != null) try {
       File meta = new File();
-      meta.setParents(Arrays.asList(new ParentReference().setId(prnId == null ? "root" : prnId)));
+      meta.setParents(Collections.singletonList(new ParentReference().setId(prnId == null ? "root" : prnId)));
       meta.setTitle(titl);
       meta.setMimeType(mime);
 
@@ -244,15 +244,12 @@ final class REST { private REST() {}
 
   /**
    * FILE / FOLDER type object inquiry
-   * @param gdId Drive ID
+   * @param cv oontent values
    * @return TRUE if FOLDER, FALSE otherwise
    */
-  static boolean isFolder(String gdId) {
-    if (mGOOSvc != null && mConnected && gdId != null) try {
-      String mime = (mGOOSvc.files().get(gdId).setFields("mimeType").execute().getMimeType());
-      return (UT.MIME_FLDR.equalsIgnoreCase(mime));
-    } catch (Exception e) {UT.le(e);}
-    return false;
+  static boolean isFolder(ContentValues cv) {
+    String mime = cv.getAsString(UT.MIME);
+    return mime != null && UT.MIME_FLDR.equalsIgnoreCase(mime);
   }
 
 }

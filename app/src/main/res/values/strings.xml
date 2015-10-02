@@ -21,6 +21,9 @@
   <string name="action_delete">DELETE all files</string>
   <string name="action_account">Select Google Account…</string>
 
-  <string name="err_author">NO GOOGLE DRIVE ACCESS!</string>
+  <string name="err_auth_sha">CHECK PackageName / SHA1\nin Developers Console!</string>
+  <string name="err_auth_dono">UNSPECIFIED GOOGLE DRIVE\nACCESS FAILURE!</string>
+  <string name="err_auth_accpick">NO ACCOUNT SELECTED!</string>
+  <string name="err_auth_nogo">ACCESS NOT AUTHORIZED!</string>
 
 </resources>

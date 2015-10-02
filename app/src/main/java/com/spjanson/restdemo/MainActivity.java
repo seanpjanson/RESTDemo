@@ -25,6 +25,8 @@ import android.widget.Toast;
 
 import com.google.android.gms.auth.GoogleAuthUtil;
 import com.google.android.gms.common.AccountPicker;
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAuthIOException;
+import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -44,8 +46,8 @@ public class MainActivity extends AppCompatActivity implements REST.ConnectCBs{
       UT.init(this);
       if (!REST.init(this)) {
         startActivityForResult(AccountPicker.newChooseAccountIntent(null,
-        null, new String[]{GoogleAuthUtil.GOOGLE_ACCOUNT_TYPE}, true, null, null, null, null),
-        REQ_ACCPICK);
+            null, new String[]{GoogleAuthUtil.GOOGLE_ACCOUNT_TYPE}, true, null, null, null, null),
+          REQ_ACCPICK);
       }
     }
   }
@@ -95,14 +97,16 @@ public class MainActivity extends AppCompatActivity implements REST.ConnectCBs{
       case REQ_CONNECT:
         if (result == RESULT_OK)
           REST.connect();
-        else
-          suicide(R.string.err_author);  //---------------------------------->>>
+        else {                                                                       UT.lg("act result - NO AUTH");
+          suicide(R.string.err_auth_nogo);  //---------------------------------->>>
+        }
         break;
       case REQ_ACCPICK:
         if (data != null && data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME) != null)
           UT.AM.setEmail(data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME));
-        if (!REST.init(this))
-          suicide(R.string.err_author); //---------------------------------->>>
+        if (!REST.init(this)) {                                                    UT.lg("act result - NO ACCOUNT");
+          suicide(R.string.err_auth_accpick); //---------------------------------->>>
+        }
         break;
       }
     super.onActivityResult(request, result, data);
@@ -113,13 +117,20 @@ public class MainActivity extends AppCompatActivity implements REST.ConnectCBs{
   public void onConnOK() {
     mDispTxt.append("\n\nCONNECTED TO: " + UT.AM.getEmail());
   }
+
   @Override
-  public void onConnFail(Intent it) {                                                       UT.lg("connFail - has res");
-    if (it != null) {
-      startActivityForResult(it, REQ_CONNECT);
-      return;  //++++++++++++++++++++++++++++++++++++++++++++++++++++++++>>>
-    }                                                                                         UT.lg("connFail - no res");
-    suicide(R.string.err_author);  //---------------------------------->>>
+  public void onConnFail(Exception ex) {
+    if (ex == null) {                                                         UT.lg("connFail - UNSPECD 1");
+      suicide(R.string.err_auth_dono);  return;  //---------------------------------->>>
+    }
+    if (ex instanceof UserRecoverableAuthIOException) {                        UT.lg("connFail - has res");
+      startActivityForResult((((UserRecoverableAuthIOException) ex).getIntent()), REQ_CONNECT);
+    } else if (ex instanceof GoogleAuthIOException) {                          UT.lg("connFail - SHA1?");
+      if (ex.getMessage() != null) suicide(ex.getMessage());  //--------------------->>>
+      else  suicide(R.string.err_auth_sha);  //---------------------------------->>>
+    } else {                                                                  UT.lg("connFail - UNSPECD 2");
+      suicide(R.string.err_auth_dono);  //---------------------------------->>>
+    }
   }
 
   /**
@@ -204,7 +215,7 @@ public class MainActivity extends AppCompatActivity implements REST.ConnectCBs{
             String gdid = cv.getAsString(UT.GDID);
             String titl = cv.getAsString(UT.TITL);
 
-            if (REST.isFolder(gdid)) {
+            if (REST.isFolder(cv)) {
               publishProgress(titl);
               iterate(cv);
             } else {
@@ -263,7 +274,7 @@ public class MainActivity extends AppCompatActivity implements REST.ConnectCBs{
           if (cvs != null) for (ContentValues cv : cvs) {
             String titl = cv.getAsString(UT.TITL);
             String gdid = cv.getAsString(UT.GDID);
-            if (REST.isFolder(gdid))
+            if (REST.isFolder(cv))
               iterate(cv);
             publishProgress("  " + titl + (REST.trash(gdid) ? " OK" : " FAIL"));
           }
@@ -302,6 +313,11 @@ public class MainActivity extends AppCompatActivity implements REST.ConnectCBs{
   private void suicide(int rid) {
     UT.AM.setEmail(null);
     Toast.makeText(this, rid, Toast.LENGTH_LONG).show();
+    finish();
+  }
+  private void suicide(String msg) {
+    UT.AM.setEmail(null);
+    Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
     finish();
   }
 }
